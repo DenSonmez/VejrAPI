@@ -47,6 +47,8 @@ class WeatherDAOImplTest {
         weather.setWeatherType("Sunny");
         weather.setWind("10 m/s");
         weatherDAO.update(weather);
+        assertEquals("Vanløse", weather.getCity());
+
 
     }
 

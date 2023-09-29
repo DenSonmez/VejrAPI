@@ -1,118 +1,163 @@
 package utils;
 
-
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import lombok.Getter;
 import model.Weather;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.Logger;
+import java.util.OptionalDouble;
+import java.util.stream.Collectors;
 
-import static javax.management.Query.attr;
 
 public class Scraper {
-
     public static List<Weather> fetchWeatherData() throws IOException, InterruptedException {
         String url = "https://vejr.tv2.dk/";
 
-        List<Weather> WeatherList = new ArrayList<>();
         Document doc = Jsoup.connect(url)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
                         "(KHTML, like Gecko) Chrome/94.0.4606.81 Safari/537.36")
                 .get();
         Thread.sleep(1000); // 1 second
 
-        // vi starter med at finde den helt store container, som er en fællesklasse for alt vejrdataen.
-        // Vi søger efter id'et, da det er bedst at søge efter id da der kun et et id.
+        // // Finder HTML-elementer, der indeholder vejrdata for i dag og flere dage frem.
+        Element todayBiggestContainer = doc.select("table.tc_datatable__main").first();
+        Element daysBiggestContainer = doc.select("table.tc_datatable__main").last();
+        // Henter alle rækker (tbody) i tabellerne, der indeholder vejrdata.
+
+        Elements mediumContainer = todayBiggestContainer.getElementsByTag("tbody").first().children();
+        Elements mediumContainer2 = daysBiggestContainer.getElementsByTag("tbody").first().children();
+
+        // Opretter lister til at gemme vejrdata for i dag og flere dage frem.
+        List<Weather> weatherListToday = mediumContainer.stream()
+                .map(Scraper::parseWeatherElement)
+                .toList();
+
+        List<Weather> weatherListDaysForward = mediumContainer2.stream()
+                .map(Scraper::parseWeatherElement)
+                .toList();
+
+        // Beregn gennemsnit for temperaturen i dag. Det gør vi fordi, at der er flere temperaturer for i dag.
+        OptionalDouble averageTempToday = weatherListToday.stream()
+                .mapToDouble(Weather::getTemperature)
+                .average();
+
+        // Beregn gennemsnit for nedbør i dag
+        OptionalDouble averageDownPourToday = weatherListToday.stream()
+                .mapToDouble(Weather::getDownpour)
+                .average();
+
+        // Opret Weather objekt for i dag med gennemsnitstemperatur og gennemsnitlig nedbør. det gør vi fordi, at der er flere temperaturer for i dag.
+        Weather today = new Weather("København", (float) averageTempToday.orElse(0), 1,
+                (float) averageDownPourToday.orElse(0), "Sunny", "5 m/s");
+
+        // Tilføj i dag til listen
+        weatherListToday.add(0, today);
+
+        // Tilføj dagens vejrdata til listen
+        weatherListToday.addAll(weatherListDaysForward);
+
+        return weatherListToday;
+    }
+
+    // En hjælpefunktion, der analyserer HTML-elementer for vejrdata og returnerer et Weather-objekt.
+    private static Weather parseWeatherElement(Element element) {
+        // Henter tidspunktet for vejrdata, temperatur og nedbør fra HTML-elementet.
+        String time = element.select("tc_weather__forecast__list__time").text();
+        //her henter vi temperaturen fra elementet og fjerner ° fra strengen
+        String tempDuringDayTodayString = element.child(2).text().replace("°", "");
+        //her henter vi nedbøren fra elementet
+        String downPourTodayString = element.select("tc_weather__forecast__list__precipitation").text();
+
+        // Konverterer temperatur og nedbør fra streng til flydende tal.
+        float tempDuringDayToday = Float.parseFloat(tempDuringDayTodayString);
+        float downPourToday = 0;
+
+        // Håndterer eventuelle fejl i konverteringen af nedbørstal.
+        try {
+            if (!downPourTodayString.isEmpty()) {
+                downPourToday = Float.parseFloat(downPourTodayString);
+            }
+        } catch (NumberFormatException e) {
+            // Håndterer fejl i parsingen her.
+        }
+
+        // Returnerer et Weather-objekt med de analyserede vejrdata.
+        return new Weather("København", tempDuringDayToday, 1, downPourToday, "Sunny", "5 m/s");
+    }
+}
+    /*  public static List<Weather> fetchWeatherData() throws IOException, InterruptedException {
+        String url = "https://vejr.tv2.dk/";
+
+        Document doc = Jsoup.connect(url)
+                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/94.0.4606.81 Safari/537.36")
+                .get();
+        Thread.sleep(1000); // 1 second
+
         Element todayBiggestContainer = doc.select("table.tc_datatable__main").first();
         Element daysBiggestContainer = doc.select("table.tc_datatable__main").last();
 
-        //Herefter finder vi den mindre kasse som hver data ligger i:
         Elements mediumContainer = todayBiggestContainer.getElementsByTag("tbody").first().children();
         Elements mediumContainer2 = daysBiggestContainer.getElementsByTag("tbody").first().children();
-        float sumTemp = 0;
-        float sumDownPour = 0;
-        //Today
 
-        for(Element weatherContainerToday : mediumContainer) {
-
-
-            //time during the day
-            String time = weatherContainerToday.select("tc_weather__forecast__list__time").text();
-
-            //Temperature
-            String tempDuringDayTodayString = weatherContainerToday.child(2).text();
-
-
-            // Downpour
-            String downPourTodayString = weatherContainerToday.select("tc_weather__forecast__list__precipitation").text();
-
-            // replace ° with nothing
-            tempDuringDayTodayString = tempDuringDayTodayString.replace("°","");
-
-            // Vi laver vores Strings om til en float
-            float tempDuringDayToday = Float.parseFloat(tempDuringDayTodayString);
-            float downPourToday = 0;
-            try{
-                if(downPourTodayString != null ||!downPourTodayString.equals("")){
-                    downPourToday = Float.parseFloat(downPourTodayString);
-                }
-            } catch (NumberFormatException e) {
-                //System.out.println("Error: parsing string:" + downPourTodayString + ". Message: " + e.getMessage());
-            }
-
-            // Så regner vi vores gennemsnit ud fra time
-            sumTemp = sumTemp + tempDuringDayToday;
-            sumDownPour = sumDownPour + downPourToday;
-
+        List<Weather> weatherListToday = new ArrayList<>();
+        for (Element element : mediumContainer) {
+            Weather weather = parseWeatherElement(element);
+            weatherListToday.add(weather);
         }
-        float averageTemp = sumTemp / mediumContainer.size();
-        float averageDownPour = sumDownPour / mediumContainer.size();
 
-        Weather today = new Weather("København", averageTemp, 1, averageDownPour, "Sunny", "5 m/s");
-        WeatherList.add(today);
+        List<Weather> weatherListDaysForward = new ArrayList<>();
+        for (Element element : mediumContainer2) {
+            Weather weather = parseWeatherElement(element);
+            weatherListDaysForward.add(weather);
+        }
 
-        //Days forward
-            // Dato
-        mediumContainer2.forEach(element -> {
-            //Dato
-            String date = element.select("tc_weather__forecast__list__time").text();
-            // Temperature
-            String tempDay = element.child(2).text().replace("°","");
-            // String tempNight = weatherContainerAllDays.select("tc_weather__forecast__list__temperature_night").text();
+        // Beregn gennemsnit for temperaturen i dag
+        double sumTempToday = 0;
+        for (Weather weather : weatherListToday) {
+            sumTempToday += weather.getTemperature();
+        }
+        double averageTempToday = sumTempToday / weatherListToday.size();
 
-            // Downpour
-            String downPour = element.select("tc_weather__forecast__list__precipitation").text();
+        // Beregn gennemsnit for nedbør i dag
+        double sumDownPourToday = 0;
+        for (Weather weather : weatherListToday) {
+            sumDownPourToday += weather.getDownpour();
+        }
+        double averageDownPourToday = sumDownPourToday / weatherListToday.size();
 
-            // Vi laver vores Strings om til en float
-            float tempDayFloat = Float.parseFloat(tempDay);
-            //  float tempNightFloat = Float.parseFloat(tempNight);
-            float downPourFloat = 0;
-            try{
-                if(downPour != null && !downPour.equals("")){
-                    downPourFloat = Float.parseFloat(downPour);
-                }
-            } catch (NumberFormatException _e) {
-                //System.out.println("Error: parsing string:" + downPour + ". Message: " + _e.getMessage());
+        // Opret Weather objekt for i dag med gennemsnitstemperatur og gennemsnitlig nedbør
+        Weather today = new Weather("København", (float) averageTempToday, 1,
+                (float) averageDownPourToday, "Sunny", "5 m/s");
+
+        // Tilføj i dag til listen
+        weatherListToday.add(0, today);
+
+        // Tilføj dagens vejrdata til listen
+        weatherListToday.addAll(weatherListDaysForward);
+
+        return weatherListToday;
+    }
+
+    private static Weather parseWeatherElement(Element element) {
+        String time = element.select("tc_weather__forecast__list__time").text();
+        String tempDuringDayTodayString = element.child(2).text().replace("°", "");
+        String downPourTodayString = element.select("tc_weather__forecast__list__precipitation").text();
+
+        float tempDuringDayToday = Float.parseFloat(tempDuringDayTodayString);
+        float downPourToday = 0;
+
+        try {
+            if (!downPourTodayString.isEmpty()) {
+                downPourToday = Float.parseFloat(downPourTodayString);
             }
+        } catch (NumberFormatException e) {
+            // Handle parsing error
+        }
 
-            Weather forward = new Weather("København", tempDayFloat, 1, downPourFloat, "Sunny", "5 m/s");
-            WeatherList.add(forward);
-
-        });
-        return WeatherList;
+        return new Weather("København", tempDuringDayToday, 1, downPourToday, "Sunny", "5 m/s");
     }
 }
+*/

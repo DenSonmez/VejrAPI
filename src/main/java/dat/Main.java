@@ -24,27 +24,25 @@ public class Main {
         IWeatherDAO weatherDAO = WeatherDAOImpl.getInstance(emf);
         var apiReader = WeatherApiReader.getInstance();
 
-        ExecutorService es = Executors.newFixedThreadPool(2);
 
+        ExecutorService es = Executors.newFixedThreadPool(2);
         try {
 
             Future<List<Weather>> weatherFuture = es.submit(Scraper::fetchWeatherData);
             Future<JsonObject> jsonObjectFuture = es.submit(() -> apiReader.getWeatherData("København"));
+
             List<Weather> weatherList = weatherFuture.get();
             JsonObject enrichedData = jsonObjectFuture.get();
 
 
-
             Weather todayWeather = weatherList.get(0);
-
             var jsonElement = enrichedData.get("CurrentData").getAsJsonObject();
 
             todayWeather.setHumidity(Integer.parseInt(jsonElement.get("humidity").getAsString()));
             todayWeather.setWeatherType(jsonElement.get("skyText").getAsString());
-            todayWeather.setWind(jsonElement.get("windText").getAsString().replace("\\",""));
+            todayWeather.setWind(jsonElement.get("windText").getAsString().replace("\\", ""));
 
             weatherList.set(0, todayWeather);
-
             weatherDAO.create(weatherList.get(0));
 
         } catch (InterruptedException e) {

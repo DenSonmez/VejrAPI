@@ -1,11 +1,8 @@
 package dao;
-
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.Query;
 import model.Weather;
-
-import java.time.LocalDate;
 import java.util.List;
 
 public class WeatherDAOImpl implements IWeatherDAO {

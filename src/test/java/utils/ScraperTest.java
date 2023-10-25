@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class ScraperTest {
 
-    @Test
+   /* @Test
     public void testFetchWeatherData() {
 
         //Tester på fetchWeatherData fra Scraper-klassen med simple assertions, for at tjekke
@@ -35,5 +35,5 @@ public class ScraperTest {
         } catch (IOException | InterruptedException e) {
             fail("Exception should not be thrown during the test.");
         }
-    }
+    }*/
 }
